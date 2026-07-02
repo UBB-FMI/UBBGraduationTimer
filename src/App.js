@@ -248,6 +248,10 @@ class App extends Component {
 
   handleKeyDown = (event) => {
     switch (event.key) {
+      case 'B':
+      case 'b':
+        this.toggleCarryover();
+        break;
       case 'F':
       case 'f':
         this.toggleFullScreen();
@@ -255,6 +259,10 @@ class App extends Component {
       case 'R':
       case 'r':
         this.resetTimer();
+        break;
+      case 'V':
+      case 'v':
+        this.continueToQuestions(false);
         break;
       case 'ArrowUp':
       case 'ArrowDown':
@@ -338,15 +346,15 @@ class App extends Component {
           </li>
           {stage === STAGE.PRESENTATION &&
             <li>
-              <button onClick={() => this.continueToQuestions()}>Continue</button>
+              <button onClick={() => this.continueToQuestions(false)}>V</button>
               -
               <span className="tip">question time</span>
             </li>
           }
           <li>
-            <button onClick={this.toggleCarryover}>{carryoverEnabled ? 'On' : 'Off'}</button>
+            <button onClick={this.toggleCarryover}>B</button>
             -
-            <span className="tip">carry presentation time</span>
+            <span className="tip">carry presentation time {carryoverEnabled ? 'on' : 'off'}</span>
           </li>
           <li>
             <button onClick={this.pauseTimer}>Space</button>

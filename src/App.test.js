@@ -32,6 +32,12 @@ const renderApp = () => {
   });
 };
 
+const pressKey = (key) => {
+  act(() => {
+    window.dispatchEvent(new KeyboardEvent('keydown', { key }));
+  });
+};
+
 it('renders the default presentation countdown', () => {
   renderApp();
 
@@ -45,7 +51,7 @@ it('carries unused presentation time into question time by default', () => {
   renderApp();
 
   const continueButton = Array.from(div.querySelectorAll('button'))
-    .find((button) => button.textContent === 'Continue');
+    .find((button) => button.textContent === 'V');
 
   act(() => {
     Simulate.click(continueButton);
@@ -55,4 +61,35 @@ it('carries unused presentation time into question time by default', () => {
   expect(div.querySelector('.minute').textContent).toBe('05');
   expect(div.querySelector('.second').textContent).toBe('00');
   expect(div.querySelector('.bonus-time').textContent).toBe('+ 15:00');
+});
+
+it('uses V to switch a running presentation to paused question time with carryover', () => {
+  renderApp();
+
+  pressKey(' ');
+
+  expect(div.textContent).toContain('pause timer');
+
+  pressKey('V');
+
+  expect(div.querySelector('.stage-label').textContent).toBe('Question Time');
+  expect(div.querySelector('.minute').textContent).toBe('05');
+  expect(div.querySelector('.second').textContent).toBe('00');
+  expect(div.querySelector('.bonus-time').textContent).toBe('+ 15:00');
+  expect(div.textContent).toContain('start timer');
+});
+
+it('uses B to disable carryover before switching with V', () => {
+  renderApp();
+
+  pressKey('B');
+
+  expect(div.textContent).toContain('carry presentation time off');
+
+  pressKey('V');
+
+  expect(div.querySelector('.stage-label').textContent).toBe('Question Time');
+  expect(div.querySelector('.minute').textContent).toBe('05');
+  expect(div.querySelector('.second').textContent).toBe('00');
+  expect(div.querySelector('.bonus-time')).toBeNull();
 });
