@@ -2,17 +2,14 @@ name: Static Release
 
 on:
   push:
-    tags:
-      - 'v*'
   workflow_dispatch:
-    inputs:
-      tag_name:
-        description: 'Release tag to create or update, for example v1.0.0'
-        required: true
-        type: string
 
 permissions:
   contents: write
+
+concurrency:
+  group: static-release-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   release:
@@ -27,6 +24,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -47,25 +46,29 @@ jobs:
         run: |
           cd build
           zip -r ../ubb-graduation-timer-static.zip .
+          cd ..
+          sha256sum ubb-graduation-timer-static.zip > ubb-graduation-timer-static.zip.sha256
 
-      - name: Resolve release tag
-        id: release
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "tag=${{ inputs.tag_name }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Create or update GitHub Release
+      - name: Publish rolling release
         env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: latest
         run: |
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git tag -f "$RELEASE_TAG" "$GITHUB_SHA"
+          git push -f origin "$RELEASE_TAG"
+
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" ubb-graduation-timer-static.zip --clobber
+            gh release upload "$RELEASE_TAG" \
+              ubb-graduation-timer-static.zip \
+              ubb-graduation-timer-static.zip.sha256 \
+              --clobber
           else
-            gh release create "$RELEASE_TAG" ubb-graduation-timer-static.zip \
-              --title "$RELEASE_TAG" \
-              --notes "Static build for $RELEASE_TAG."
+            gh release create "$RELEASE_TAG" \
+              ubb-graduation-timer-static.zip \
+              ubb-graduation-timer-static.zip.sha256 \
+              --title "Latest graduation timer static build" \
+              --notes "Automatically built from commit $GITHUB_SHA." \
+              --target "$GITHUB_SHA" \
+              --latest
           fi
