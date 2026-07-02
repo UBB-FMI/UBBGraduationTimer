@@ -45,17 +45,51 @@ body {
   src: url("/ds-digit.ttf");
 }
 
-.clock {
+.timer-panel {
   position: fixed;
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
-  font-size: 30vw;
+  width: 100%;
+  text-align: center;
   color: white;
   font-family: Geneva, Tahoma, sans-serif;
+  line-height: 1;
 }
+
+.stage-label {
+  margin-bottom: 1.5vw;
+  font-size: 12vw;
+  font-weight: 600;
+}
+
+.clock {
+  font-size: 30vw;
+  color: white;
+  white-space: nowrap;
+}
+
+.clock .time {
+  color: white;
+}
+
+.clock.question-stage .time {
+  color: #a9ddff;
+}
+
+.clock.overtime .time {
+  color: #ff8f8f;
+}
+
 .clock.show-cursor .time.editing {
   background: #666;
+}
+
+.bonus-time {
+  margin-top: 1vw;
+  color: #a9ddff;
+  font-size: 8vw;
+  font-weight: 600;
 }
 
 .tips {

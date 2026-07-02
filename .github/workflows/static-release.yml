@@ -1,0 +1,71 @@
+name: Static Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release tag to create or update, for example v1.0.0'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and release static site
+    runs-on: ubuntu-latest
+
+    env:
+      CI: true
+      NODE_OPTIONS: --openssl-legacy-provider
+      PUBLIC_URL: .
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test
+        run: npm test -- --watchAll=false
+
+      - name: Build static site
+        run: npm run build
+
+      - name: Package static build
+        run: |
+          cd build
+          zip -r ../ubb-graduation-timer-static.zip .
+
+      - name: Resolve release tag
+        id: release
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ inputs.tag_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" ubb-graduation-timer-static.zip --clobber
+          else
+            gh release create "$RELEASE_TAG" ubb-graduation-timer-static.zip \
+              --title "$RELEASE_TAG" \
+              --notes "Static build for $RELEASE_TAG."
+          fi

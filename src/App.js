@@ -2,22 +2,49 @@ import React, { Component } from 'react';
 import clsx from 'clsx';
 import './App.css';
 
-const pad = (n) => (n < 10) ? `0${n}` : n;
+const STAGE = {
+  PRESENTATION: 'presentation',
+  QUESTIONS: 'questions',
+};
+
+const PRESENTATION_SECONDS = 15 * 60;
+const QUESTION_SECONDS = 5 * 60;
+const TICK_SECONDS = 0.5;
+
+const pad = (n) => (n < 10) ? `0${n}` : `${n}`;
+
+const getDisplaySeconds = (t) => Math.ceil(Math.abs(t));
+
+const getTimeParts = (t) => {
+  const safeTime = Math.max(0, Math.ceil(t));
+  return {
+    minute: Math.floor(safeTime / 60),
+    second: safeTime % 60,
+  };
+};
 
 class App extends Component {
   constructor(props) {
     super(props);
     this.state = {
-      t: 0,
+      t: PRESENTATION_SECONDS,
       paused: true,
-      mode: 'stopwatch',
+      stage: STAGE.PRESENTATION,
       fullscreen: false,
-      adjusting: false,
       editing: null, // minute, second, null
       showCursor: false,
+      carryoverEnabled: true,
+      carryover: 0,
+      overtimeAlarmed: false,
     };
     this.timer = null;
     this.wakeLock = null;
+    this.alarmAudio = typeof window !== 'undefined' && window.Audio
+      ? new window.Audio(`${process.env.PUBLIC_URL || ''}/alarm.mp3`)
+      : null;
+    if (this.alarmAudio) {
+      this.alarmAudio.preload = 'auto';
+    }
   }
 
   componentDidMount() {
@@ -35,9 +62,11 @@ class App extends Component {
 
   async requestWakeLock() {
     try {
+      if (this.wakeLock) return;
       if ('wakeLock' in navigator) {
         this.wakeLock = await navigator.wakeLock.request('screen');
         this.wakeLock.addEventListener('release', () => {
+          this.wakeLock = null;
           console.log('Wake Lock was released');
         });
         console.log('Wake Lock is active');
@@ -54,22 +83,49 @@ class App extends Component {
     }
   }
 
+  playAlarm() {
+    if (!this.alarmAudio) return;
+    this.alarmAudio.currentTime = 0;
+    const playPromise = this.alarmAudio.play();
+    if (playPromise && playPromise.catch) {
+      playPromise.catch(() => {});
+    }
+  }
+
+  stopAlarm() {
+    if (!this.alarmAudio) return;
+    this.alarmAudio.pause();
+    this.alarmAudio.currentTime = 0;
+  }
+
   tick() {
-    const { mode, paused, showCursor, editing } = this.state;
+    const { paused, showCursor, editing } = this.state;
+    let shouldPlayAlarm = false;
     if (editing) {
       this.setState({ showCursor: !showCursor });
     }
     if (paused) return;
     this.setState((prevState) => {
-      const t = prevState.t + (mode === 'countdown' ? -1 : 1) * 0.5;
-      if (t <= 0) {
-        this.releaseWakeLock();
+      if (prevState.paused) return null;
+
+      if (prevState.stage === STAGE.QUESTIONS && prevState.carryover > 0) {
         return {
-          t: 0,
-          paused: true,
+          carryover: Math.max(0, prevState.carryover - TICK_SECONDS),
         };
-      } else {
-        return { t };
+      }
+
+      const t = prevState.t - TICK_SECONDS;
+      const enteredOvertime = !prevState.overtimeAlarmed
+        && ((prevState.t > 0 && t <= 0) || (prevState.t === 0 && t < 0));
+      shouldPlayAlarm = enteredOvertime;
+
+      return {
+        t,
+        overtimeAlarmed: prevState.overtimeAlarmed || enteredOvertime,
+      };
+    }, () => {
+      if (shouldPlayAlarm) {
+        this.playAlarm();
       }
     });
   }
@@ -87,24 +143,62 @@ class App extends Component {
   };
 
   resetTimer = () => {
+    this.stopAlarm();
     this.releaseWakeLock();
     this.setState({
-      t: 0,
-      paused: true
+      t: PRESENTATION_SECONDS,
+      paused: true,
+      stage: STAGE.PRESENTATION,
+      editing: null,
+      showCursor: false,
+      carryover: 0,
+      overtimeAlarmed: false,
     });
   };
 
-  switchMode = (mode) => {
+  continueToQuestions = (startRunning) => {
+    if (this.state.stage !== STAGE.PRESENTATION) return;
+
+    const shouldRun = typeof startRunning === 'boolean'
+      ? startRunning
+      : !this.state.paused;
+    const carryover = this.state.carryoverEnabled && this.state.t > 0
+      ? Math.ceil(this.state.t)
+      : 0;
+
+    this.stopAlarm();
     this.setState({
-      mode: mode || (this.state.mode === 'stopwatch' ? 'countdown' : 'stopwatch'),
+      t: QUESTION_SECONDS,
+      paused: !shouldRun,
+      stage: STAGE.QUESTIONS,
+      editing: null,
+      showCursor: false,
+      carryover,
+      overtimeAlarmed: false,
+    }, () => {
+      if (shouldRun) {
+        this.requestWakeLock();
+      } else {
+        this.releaseWakeLock();
+      }
     });
+  };
+
+  toggleCarryover = () => {
+    this.setState((prevState) => ({
+      carryoverEnabled: !prevState.carryoverEnabled,
+      carryover: prevState.carryoverEnabled && prevState.stage === STAGE.QUESTIONS
+        ? 0
+        : prevState.carryover,
+    }));
   };
 
   pauseTimer = () => {
     const paused = !this.state.paused;
     this.setState({
       paused,
-      editing: false,
+      editing: null,
+      showCursor: false,
     }, () => {
       if (!paused) {
         this.requestWakeLock();
@@ -131,10 +225,14 @@ class App extends Component {
         if (!state.editing) {
           state.editing = 'second';
         }
+        if (state.t < 0) {
+          state.t = 0;
+        }
         state.t += (direction === 'up' ? 1 : -1) * (state.editing === 'second' ? 1 : 60);
         if (state.t < 0) {
           state.t = 0;
         }
+        state.overtimeAlarmed = false;
         break;
       case 'left':
         state.editing = 'minute';
@@ -158,10 +256,6 @@ class App extends Component {
       case 'r':
         this.resetTimer();
         break;
-      case 'S':
-      case 's':
-        this.switchMode();
-        break;
       case 'ArrowUp':
       case 'ArrowDown':
       case 'ArrowLeft':
@@ -172,7 +266,11 @@ class App extends Component {
         this.toggleEditing();
         break;
       case ' ':
-        this.pauseTimer();
+        if (this.state.stage === STAGE.PRESENTATION && this.state.t <= 0) {
+          this.continueToQuestions(true);
+        } else {
+          this.pauseTimer();
+        }
         break;
       default:
         break;
@@ -180,18 +278,44 @@ class App extends Component {
   };
 
   render() {
-    const { t, paused, editing, mode, showCursor, fullscreen } = this.state;
-    const second = parseInt(t % 60);
-    const minute = parseInt((t - second) / 60);
+    const {
+      t,
+      paused,
+      editing,
+      stage,
+      showCursor,
+      fullscreen,
+      carryoverEnabled,
+      carryover,
+    } = this.state;
+    const { minute, second } = getTimeParts(getDisplaySeconds(t));
+    const bonus = getTimeParts(carryover);
+    const isQuestions = stage === STAGE.QUESTIONS;
+    const isOvertime = t <= 0;
+    const stageLabel = isQuestions ? 'Question Time' : 'Presentation';
+    const spaceAction = stage === STAGE.PRESENTATION && t <= 0
+      ? 'continue'
+      : (paused ? 'start' : 'pause');
+
     return (
       <div className="App">
-        <div
-          className={clsx('clock', { 'show-cursor': showCursor })}
-          onDoubleClick={() => this.toggleFullScreen()}
-        >
-          <span className={clsx('time minute', { editing: editing === 'minute' })}>{pad(minute)}</span>
-          :
-          <span className={clsx('time second', { editing: editing === 'second' })}>{pad(second)}</span>
+        <div className="timer-panel">
+          <div className="stage-label">{stageLabel}</div>
+          <div
+            className={clsx('clock', {
+              'show-cursor': showCursor,
+              'question-stage': isQuestions,
+              overtime: isOvertime,
+            })}
+            onDoubleClick={() => this.toggleFullScreen()}
+          >
+            <span className={clsx('time minute', { editing: editing === 'minute' })}>{pad(minute)}</span>
+            :
+            <span className={clsx('time second', { editing: editing === 'second' })}>{pad(second)}</span>
+          </div>
+          {isQuestions && carryover > 0 &&
+            <div className="bonus-time">+ {pad(bonus.minute)}:{pad(bonus.second)}</div>
+          }
         </div>
         <ul className="tips">
           <li>
@@ -212,19 +336,22 @@ class App extends Component {
             -
             <span className="tip">reset timer</span>
           </li>
+          {stage === STAGE.PRESENTATION &&
+            <li>
+              <button onClick={() => this.continueToQuestions()}>Continue</button>
+              -
+              <span className="tip">question time</span>
+            </li>
+          }
           <li>
-            <button onClick={this.switchMode}>S</button>
+            <button onClick={this.toggleCarryover}>{carryoverEnabled ? 'On' : 'Off'}</button>
             -
-            {mode === 'countdown' ?
-              <span className="tip"><span>countdown ✓</span> or <button onClick={() => this.switchMode('stopwatch')}>stopwatch</button></span>
-              :
-              <span className="tip"><button onClick={() => this.switchMode('countdown')}>countdown</button> or <span>stopwatch ✓</span></span>
-            }
+            <span className="tip">carry presentation time</span>
           </li>
           <li>
             <button onClick={this.pauseTimer}>Space</button>
             -
-            <span className="tip">{paused ? 'start' : 'pause'} timer</span>
+            <span className="tip">{spaceAction} timer</span>
           </li>
         </ul>
       </div>
