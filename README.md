@@ -1,12 +1,22 @@
-# Fullscreen Timer
+# UBB Graduation Timer
 
-This is a simple countdown timer for presentations with a separate question time stage.
+This is a fullscreen countdown timer tailored for UBB graduation presentations. It guides each candidate through a 15-minute presentation stage followed by a 5-minute question time stage, with clear visual cues when either stage runs over time.
 
-![animation](docs/animate.gif)
+This repository is a UBB-specific fork/customization of the original [fullscreen-timer](https://github.com/alphakevin/fullscreen-timer) project.
 
-Please try online version: https://alphakevin.github.io/fullscreen-timer/
+![UBB Graduation Timer running in Chromium](docs/screenshot.png)
 
-## Keyboard Shortcut
+## Features
+
+* Presentation stage starts at 15 minutes.
+* Question time starts at 5 minutes.
+* Unused presentation time can be carried into question time as a `+ MM:SS` bonus.
+* Presentation time uses white digits; question time uses pale blue digits.
+* Overtime continues counting upward with pale red digits.
+* A bell alarm plays once when either stage first reaches overtime.
+* Fullscreen display and keyboard-first controls for use during the ceremony.
+
+## Keyboard Shortcuts
 
 * <kbd>F</kbd> - toggle fullscreen mode.
 * <kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd> - edit timer.
